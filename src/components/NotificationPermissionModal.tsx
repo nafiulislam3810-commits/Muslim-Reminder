@@ -1,117 +1,129 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { 
   Bell, 
   Clock, 
   BatteryCharging, 
-  ShieldAlert, 
   CheckCircle2, 
+  AlertTriangle, 
+  ExternalLink, 
   X, 
-  AlertTriangle,
-  Smartphone,
-  ChevronDown,
-  ChevronUp,
-  Settings,
-  Volume2,
-  Check
+  Smartphone, 
+  Volume2, 
+  ShieldCheck, 
+  RefreshCw,
+  Play
 } from 'lucide-react';
-import { triggerHaptic } from '../utils/audio';
+import { Capacitor } from '@capacitor/core';
 import { 
+  checkNotificationPermissionStatus, 
+  checkExactAlarmPermissionStatus, 
   requestAllNotificationPermissions, 
   requestExactAlarmSetting,
-  schedule10SecondTestAdhan 
+  schedule10SecondTestAdhan
 } from '../utils/nativeNotifications';
+import { triggerHaptic } from '../utils/audio';
 
 interface NotificationPermissionModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onPermissionGranted?: () => void;
-  notificationGranted: boolean;
-  exactAlarmGranted: boolean;
+  onPermissionsUpdated?: () => void;
 }
 
 export const NotificationPermissionModal: React.FC<NotificationPermissionModalProps> = ({
   isOpen,
   onClose,
-  onPermissionGranted,
-  notificationGranted,
-  exactAlarmGranted
+  onPermissionsUpdated
 }) => {
-  const [requesting, setRequesting] = useState(false);
-  const [deniedExplanation, setDeniedExplanation] = useState(false);
-  const [expandedOem, setExpandedOem] = useState<'xiaomi' | 'samsung' | 'oppo' | null>(null);
-
-  // 10-Second Test Adhan state
-  const [isSchedulingTest, setIsSchedulingTest] = useState(false);
+  const [notifGranted, setNotifGranted] = useState<boolean>(false);
+  const [exactAlarmGranted, setExactAlarmGranted] = useState<boolean>(true);
+  const [checking, setChecking] = useState<boolean>(true);
+  const [activeBrandTab, setActiveBrandTab] = useState<'xiaomi' | 'samsung' | 'oppo' | 'general'>('xiaomi');
   const [testCountdown, setTestCountdown] = useState<number | null>(null);
-  const [testResultMsg, setTestResultMsg] = useState<string | null>(null);
+  const [testStatusMsg, setTestStatusMsg] = useState<string | null>(null);
+
+  // Check current permission statuses on modal open
+  const checkStatuses = async () => {
+    setChecking(true);
+    const n = await checkNotificationPermissionStatus();
+    const e = await checkExactAlarmPermissionStatus();
+    setNotifGranted(n);
+    setExactAlarmGranted(e);
+    setChecking(false);
+  };
+
+  useEffect(() => {
+    if (isOpen) {
+      checkStatuses();
+    }
+  }, [isOpen]);
+
+  // Request all permissions
+  const handleRequestPermissions = async () => {
+    triggerHaptic(30);
+    const result = await requestAllNotificationPermissions();
+    setNotifGranted(result.notificationsGranted);
+    setExactAlarmGranted(result.exactAlarmGranted);
+
+    if (onPermissionsUpdated) {
+      onPermissionsUpdated();
+    }
+
+    if (result.notificationsGranted && result.exactAlarmGranted) {
+      triggerHaptic([100, 50, 100]);
+    }
+  };
+
+  // Open exact alarm setting intent on Android 12+
+  const handleOpenExactAlarmSetting = async () => {
+    triggerHaptic(20);
+    await requestExactAlarmSetting();
+    setTimeout(() => {
+      checkStatuses();
+    }, 2000);
+  };
+
+  // Requirement 8: 10-Second Test Adhan
+  const handleRun10SecTest = async () => {
+    triggerHaptic(40);
+    setTestStatusMsg('শিডিউল হচ্ছে...');
+    const res = await schedule10SecondTestAdhan();
+    if (!res.success) {
+      setTestStatusMsg(res.error || 'টেস্ট শিডিউল করতে ব্যর্থ হয়েছে।');
+      return;
+    }
+
+    setTestStatusMsg('শিডিউল সফল! ১০ সেকেন্ড পর আজান ও নোটিফিকেশন আসবে। ফোন লক বা স্ক্রিন অফ করে পরীক্ষা করতে পারেন...');
+    setTestCountdown(10);
+
+    const interval = setInterval(() => {
+      setTestCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          setTestStatusMsg('আজান বাজছে / সম্পন্ন হয়েছে!');
+          setTimeout(() => {
+            setTestCountdown(null);
+            setTestStatusMsg(null);
+          }, 6000);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  };
 
   if (!isOpen) return null;
 
-  const handleRequestPermissions = async () => {
-    triggerHaptic(25);
-    setRequesting(true);
-    setTestResultMsg(null);
-
-    try {
-      const res = await requestAllNotificationPermissions();
-      setRequesting(false);
-
-      if (res.notificationsGranted && res.exactAlarmGranted) {
-        triggerHaptic([60, 40, 60]);
-        if (onPermissionGranted) onPermissionGranted();
-        onClose();
-      } else {
-        triggerHaptic(40);
-        setDeniedExplanation(true);
-      }
-    } catch {
-      setRequesting(false);
-      setDeniedExplanation(true);
-    }
-  };
-
-  const handleOpenExactSetting = async () => {
-    triggerHaptic(20);
-    await requestExactAlarmSetting();
-  };
-
-  const handleStart10SecondTest = async () => {
-    triggerHaptic(30);
-    setIsSchedulingTest(true);
-    setTestResultMsg(null);
-
-    const res = await schedule10SecondTestAdhan();
-    setIsSchedulingTest(false);
-
-    if (res.success) {
-      setTestResultMsg('১০ সেকেন্ড পরের টেস্ট আজান শিডিউল করা হয়েছে! এখন ফোন লক বা স্ক্রিন অফ করে পরীক্ষা করুন।');
-      setTestCountdown(10);
-
-      const interval = setInterval(() => {
-        setTestCountdown((prev) => {
-          if (prev === null || prev <= 1) {
-            clearInterval(interval);
-            return null;
-          }
-          return prev - 1;
-        });
-      }, 1000);
-    } else {
-      setTestResultMsg(res.error || 'টেস্ট শিডিউল করতে ব্যর্থ হয়েছে। পারমিশন অন করুন।');
-    }
-  };
-
   return createPortal(
-    <div className="fixed inset-0 z-[120] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200 overflow-y-auto">
+    <div className="fixed inset-0 z-[150] flex items-center justify-center p-3 sm:p-4 bg-black/75 backdrop-blur-xs animate-in fade-in duration-200">
       <div 
-        className="fixed inset-0 cursor-pointer" 
+        className="absolute inset-0 cursor-pointer" 
         onClick={onClose} 
         aria-hidden="true" 
       />
 
       <div 
-        className="relative z-10 w-full max-w-lg rounded-3xl bg-white dark:bg-[#131b17] border border-emerald-950/15 dark:border-emerald-500/25 p-5 sm:p-6 shadow-2xl space-y-4 text-left my-auto animate-in zoom-in-95 duration-150 max-h-[92vh] overflow-y-auto"
+        className="relative z-10 w-full max-w-lg max-h-[92vh] overflow-y-auto rounded-3xl bg-white dark:bg-[#131b17] border border-emerald-950/15 dark:border-emerald-500/30 p-5 sm:p-6 shadow-2xl space-y-4 text-left text-stone-900 dark:text-stone-100"
         onClick={(e) => e.stopPropagation()}
         role="dialog"
         aria-modal="true"
@@ -120,251 +132,263 @@ export const NotificationPermissionModal: React.FC<NotificationPermissionModalPr
         <button
           type="button"
           onClick={onClose}
-          className="absolute right-3.5 top-3.5 p-1.5 rounded-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all cursor-pointer"
+          className="absolute right-4 top-4 p-1.5 rounded-full text-stone-400 hover:text-stone-600 dark:hover:text-stone-200 hover:bg-stone-100 dark:hover:bg-stone-800 transition-all cursor-pointer"
           aria-label="বন্ধ করুন"
         >
-          <X className="w-4 h-4" />
+          <X className="w-5 h-5" />
         </button>
 
-        {/* Header */}
-        <div className="flex items-center gap-3">
-          <div className="w-12 h-12 rounded-2xl bg-emerald-50 dark:bg-emerald-950/60 border border-emerald-500/25 flex items-center justify-center text-[#177a56] dark:text-emerald-400 shrink-0 shadow-xs">
+        {/* Modal Header */}
+        <div className="flex items-center gap-3 pr-8">
+          <div className="w-12 h-12 rounded-2xl bg-emerald-100 dark:bg-emerald-950/70 border border-emerald-500/30 flex items-center justify-center text-emerald-700 dark:text-emerald-400 shrink-0 shadow-xs">
             <Bell className="w-6 h-6 animate-pulse" />
           </div>
           <div>
-            <span className="text-[10px] font-bold tracking-wider uppercase text-[#177a56] dark:text-emerald-400 block">
-              আজান ও ওয়াক্ত সতর্কতা
+            <span className="text-[10px] font-bold tracking-wider uppercase text-emerald-700 dark:text-emerald-400 block">
+              আজান ও ওয়াক্ত নোটিফিকেশন অনুমতি
             </span>
-            <h3 className="text-base sm:text-lg font-black text-stone-900 dark:text-stone-50 leading-tight">
-              সঠিক সময়ে আজান পেতে অনুমতি দিন
+            <h3 className="text-base sm:text-lg font-black leading-tight text-stone-900 dark:text-white">
+              সঠিক সময়ে আজান ও নোটিফিকেশন নিশ্চিত করুন
             </h3>
           </div>
         </div>
 
-        {/* Overview Notice */}
-        <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300 leading-relaxed">
-          আপনার ফোন বন্ধ থাকলে বা স্ক্রিন অফ থাকলেও ৫ ওয়াক্ত নামাজের সঠিক সময়ে আজানের মিষ্টি ধ্বনি ও নোটিফিকেশন পেতে অ্যান্ড্রয়েডের দুটি অনুমতি প্রয়োজন:
+        {/* Key explanation */}
+        <p className="text-xs sm:text-sm text-stone-600 dark:text-stone-300 leading-relaxed bg-stone-50 dark:bg-stone-900/60 p-3 rounded-2xl border border-stone-200/60 dark:border-stone-800">
+          অ্যাপ বন্ধ থাকলে বা <strong>ফোনের স্ক্রিন অফ (লক)</strong> থাকলেও ৫ ওয়াক্ত নামাজের সঠিক সময়ে আজানের অডিও বাজাতে এবং নোটিফিকেশন পেতে অ্যান্ড্রয়েডের দুটি অনুমতি চালু থাকা জরুরি:
         </p>
 
-        {/* Permission items list */}
-        <div className="space-y-2 text-xs sm:text-sm">
-          {/* Permission 1: Notification */}
-          <div className={`p-3 rounded-2xl border transition-all ${
-            notificationGranted 
-              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
-              : 'bg-stone-50 dark:bg-stone-900/60 border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-200'
-          }`}>
+        {/* Permission Status Badges & Action Buttons */}
+        <div className="space-y-2.5">
+          {/* 1. Notification Permission */}
+          <div className="p-3.5 rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/40 flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-start gap-2.5">
-              {notificationGranted ? (
-                <CheckCircle2 className="w-4 h-4 text-[#177a56] dark:text-emerald-400 shrink-0 mt-0.5" />
-              ) : (
-                <AlertTriangle className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <strong className="font-bold">১. নোটিফিকেশন অনুমতি (POST_NOTIFICATIONS)</strong>
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                    notificationGranted 
-                      ? 'bg-emerald-200/60 dark:bg-emerald-800/40 text-emerald-800 dark:text-emerald-200' 
-                      : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                  }`}>
-                    {notificationGranted ? 'অনুমোদিত' : 'অনুমতি প্রয়োজন'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-0.5 leading-normal">
-                  ওয়াক্তের সময় ফোনের স্ট্যাটাস বারে নোটিফিকেশন প্রদর্শন এবং আজানের সাউন্ড প্লে করার জন্য।
-                </p>
+              <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${notifGranted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-rose-100 text-rose-700 dark:bg-rose-950/60 dark:text-rose-400'}`}>
+                <Bell className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-xs sm:text-sm block">১. নোটিফিকেশন অনুমতি (POST_NOTIFICATIONS)</span>
+                <span className="text-[11px] text-stone-500 dark:text-stone-400 block">
+                  {notifGranted ? 'অনুমতি সচল রয়েছে' : 'নামাজের নোটিফিকেশন স্ট্যাটাস বারে দেখানোর জন্য আবশ্যক'}
+                </span>
               </div>
             </div>
+
+            {notifGranted ? (
+              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-xs font-bold shrink-0 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                অনুমোদিত
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleRequestPermissions}
+                className="px-3 py-1.5 rounded-xl bg-[#177a56] hover:bg-[#126446] text-white font-bold text-xs shadow-xs transition-all cursor-pointer shrink-0"
+              >
+                অনুমতি দিন
+              </button>
+            )}
           </div>
 
-          {/* Permission 2: Exact Alarm */}
-          <div className={`p-3 rounded-2xl border transition-all ${
-            exactAlarmGranted 
-              ? 'bg-emerald-50/70 dark:bg-emerald-950/30 border-emerald-500/30 text-emerald-900 dark:text-emerald-200'
-              : 'bg-stone-50 dark:bg-stone-900/60 border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-200'
-          }`}>
+          {/* 2. Exact Alarm Permission (Android 12+) */}
+          <div className="p-3.5 rounded-2xl border border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900/40 flex items-center justify-between gap-3 shadow-xs">
             <div className="flex items-start gap-2.5">
-              {exactAlarmGranted ? (
-                <CheckCircle2 className="w-4 h-4 text-[#177a56] dark:text-emerald-400 shrink-0 mt-0.5" />
-              ) : (
-                <Clock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-              )}
-              <div className="flex-1">
-                <div className="flex items-center justify-between">
-                  <strong className="font-bold">২. সঠিক অ্যালার্ম (SCHEDULE_EXACT_ALARM)</strong>
-                  <span className={`text-[11px] font-bold px-2 py-0.5 rounded-md ${
-                    exactAlarmGranted 
-                      ? 'bg-emerald-200/60 dark:bg-emerald-800/40 text-emerald-800 dark:text-emerald-200' 
-                      : 'bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-300'
-                  }`}>
-                    {exactAlarmGranted ? 'অনুমোদিত' : 'অনুমতি প্রয়োজন'}
-                  </span>
-                </div>
-                <p className="text-[11px] text-stone-600 dark:text-stone-400 mt-0.5 leading-normal">
-                  অ্যান্ড্রয়েড ১২+ এ স্লিপ মোডেও এক সেকেন্ড বিলম্ব না করে নির্ধারিত মিনিটে আজান বাজার জন্য।
-                </p>
+              <div className={`p-2 rounded-xl mt-0.5 shrink-0 ${exactAlarmGranted ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-400' : 'bg-amber-100 text-amber-700 dark:bg-amber-950/60 dark:text-amber-400'}`}>
+                <Clock className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="font-bold text-xs sm:text-sm block">২. সঠিক সময়ে অ্যালার্ম (SCHEDULE_EXACT_ALARM)</span>
+                <span className="text-[11px] text-stone-500 dark:text-stone-400 block">
+                  {exactAlarmGranted ? 'সঠিক অ্যালার্ম পারমিশন সক্রিয়' : 'Android 12+ এ স্লিপ মোডেও দেরিমুক্ত আজানের জন্য আবশ্যক'}
+                </span>
               </div>
             </div>
+
+            {exactAlarmGranted ? (
+              <span className="px-2.5 py-1 rounded-full bg-emerald-100 text-emerald-800 dark:bg-emerald-950/80 dark:text-emerald-300 text-xs font-bold shrink-0 flex items-center gap-1">
+                <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                সক্রিয়
+              </span>
+            ) : (
+              <button
+                type="button"
+                onClick={handleOpenExactAlarmSetting}
+                className="px-3 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs shadow-xs transition-all cursor-pointer shrink-0 flex items-center gap-1"
+              >
+                <span>অন করুন</span>
+                <ExternalLink className="w-3 h-3" />
+              </button>
+            )}
           </div>
         </div>
 
-        {/* If permissions denied or explanation requested */}
-        {deniedExplanation && (
-          <div className="p-3 rounded-2xl bg-rose-50 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800/60 text-xs text-rose-800 dark:text-rose-200 space-y-2">
-            <div className="flex items-start gap-2">
-              <ShieldAlert className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0 mt-0.5" />
-              <div>
-                <strong>অনুমতি এখনও সম্পূর্ণ হয়নি!</strong>
-                <p className="text-[11px] leading-relaxed mt-0.5 text-rose-700 dark:text-rose-300">
-                  নিচের বোতামে ট্যাপ করে ফোনের Settings &gt; Apps &gt; Muslim Reminder-এ যান। সেখানে <b>Notifications</b> চালু করুন এবং <b>Alarms &amp; reminders</b> অনুমোদন করুন।
-                </p>
-              </div>
+        {/* 10-Second Test Adhan Button (Requirement 8) */}
+        <div className="p-3.5 rounded-2xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 space-y-2">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-2">
+              <Volume2 className="w-4 h-4 text-emerald-700 dark:text-emerald-400" />
+              <span className="font-bold text-xs sm:text-sm text-emerald-900 dark:text-emerald-200">
+                ১০ সেকেন্ড পর টেস্ট আজান পরীক্ষা করুন
+              </span>
             </div>
             <button
               type="button"
-              onClick={handleOpenExactSetting}
-              className="w-full py-2 px-3 rounded-xl bg-rose-600 hover:bg-rose-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs"
+              disabled={testCountdown !== null}
+              onClick={handleRun10SecTest}
+              className="py-1.5 px-3 rounded-xl bg-[#177a56] hover:bg-[#126446] text-white font-bold text-xs flex items-center gap-1.5 shadow-xs transition-all cursor-pointer disabled:opacity-60"
             >
-              <Settings className="w-3.5 h-3.5" />
-              <span>ফোনের সেটিংসে যান ও চালু করুন</span>
+              {testCountdown !== null ? (
+                <>
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                  <span>{testCountdown} সেকেন্ড...</span>
+                </>
+              ) : (
+                <>
+                  <Play className="w-3.5 h-3.5 fill-white" />
+                  <span>টেস্ট চালান</span>
+                </>
+              )}
             </button>
           </div>
-        )}
 
-        {/* 10-Second Test Adhan verification card (Requirement 8) */}
-        <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/25 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <Volume2 className="w-4 h-4 text-amber-600 dark:text-amber-400" />
-              <span className="text-xs font-bold text-amber-950 dark:text-amber-200">
-                দ্রুত পরীক্ষা: ১০ সেকেন্ড পর টেস্ট আজান
-              </span>
-            </div>
-            {testCountdown !== null && (
-              <span className="text-xs font-mono font-bold px-2 py-0.5 bg-amber-500 text-white rounded-md animate-pulse">
-                {testCountdown}s
-              </span>
-            )}
-          </div>
-          <p className="text-[11px] text-amber-800 dark:text-amber-300 leading-normal">
-            বোতামে চাপ দিয়ে ফোন লক করুন। ১০ সেকেন্ড পর স্ক্রিন অফ থাকলেও আজান বেজে উঠবে।
+          <p className="text-[11px] text-emerald-800 dark:text-emerald-300 leading-normal">
+            বাটন চাপার পর <strong>ফোন লক বা স্ক্রিন অফ করে রাখুন</strong>। ঠিক ১০ সেকেন্ড পর সাউন্ড ও নোটিফিকেশন আসে কি না তাৎক্ষণিক যাচাই করতে পারেন।
           </p>
-          <button
-            type="button"
-            disabled={isSchedulingTest || testCountdown !== null}
-            onClick={handleStart10SecondTest}
-            className="w-full py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs disabled:opacity-50"
-          >
-            <Clock className="w-3.5 h-3.5" />
-            <span>
-              {testCountdown !== null
-                ? `আজান বাজতে বাকি ${testCountdown} সেকেন্ড... (ফোন লক করুন)`
-                : isSchedulingTest
-                ? 'শিডিউল হচ্ছে...'
-                : '১০ সেকেন্ড পর টেস্ট আজান বাজান'}
-            </span>
-          </button>
-          {testResultMsg && (
-            <p className="text-[11px] text-emerald-800 dark:text-emerald-300 font-medium text-center">
-              {testResultMsg}
-            </p>
+
+          {testStatusMsg && (
+            <div className="text-[11px] p-2 rounded-xl bg-white dark:bg-stone-900 border border-emerald-200 dark:border-emerald-800 font-semibold text-emerald-900 dark:text-emerald-200 animate-in fade-in">
+              {testStatusMsg}
+            </div>
           )}
         </div>
 
-        {/* Battery Optimization Guidance Accordion (Requirement 7 - Xiaomi/Samsung/Oppo) */}
-        <div className="border border-stone-200 dark:border-stone-800 rounded-2xl p-3 space-y-2 text-xs">
-          <div className="flex items-center gap-2 text-stone-800 dark:text-stone-200 font-bold">
-            <BatteryCharging className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>ব্যাটারি অপটিমাইজেশন বন্ধের নির্দেশিকা (Xiaomi/Samsung/Oppo)</span>
+        {/* OEM Battery Optimization Guide Tabs (Xiaomi, Samsung, Oppo, General) */}
+        <div className="space-y-2.5 pt-1">
+          <div className="flex items-center gap-2">
+            <BatteryCharging className="w-4 h-4 text-amber-500" />
+            <h4 className="text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-100">
+              ফোনের ব্যাটারি অপটিমাইজেশন বন্ধের নিয়ম
+            </h4>
           </div>
-          <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-normal">
-            Android-এর পাওয়ার সেভার যাতে আজানের অ্যালার্ম বাতিল না করে দেয়, এজন্য আপনার ফোনের ব্র্যান্ড অনুযায়ী সেটিংস করুন:
+
+          <p className="text-[11px] text-stone-500 dark:text-stone-400 leading-tight">
+            কিছু ফোনে স্ক্রিন লক থাকলে ব্যাকগ্রাউন্ড অ্যালার্ম বন্ধ হয়ে যায়। আপনার ফোনের ব্যান্ড অনুযায়ী নিচের সেটিংসটি নিশ্চিত করুন:
           </p>
 
-          <div className="space-y-1.5 pt-1">
-            {/* Xiaomi */}
-            <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setExpandedOem(expandedOem === 'xiaomi' ? null : 'xiaomi')}
-                className="w-full py-2 px-3 flex items-center justify-between font-bold text-[11px] text-stone-800 dark:text-stone-200 bg-stone-50 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
-              >
-                <span>📱 Xiaomi / Redmi / POCO (MIUI / HyperOS)</span>
-                {expandedOem === 'xiaomi' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              {expandedOem === 'xiaomi' && (
-                <div className="p-2.5 text-[11px] text-stone-600 dark:text-stone-300 bg-white dark:bg-[#131b17] space-y-1 leading-relaxed">
-                  <p>১. ফোনের <b>Security App</b> &gt; <b>Manage Apps</b> &gt; <b>Muslim Reminder</b>-এ যান।</p>
-                  <p>২. <b>Autostart (অটোস্টার্ট)</b> চালু করুন।</p>
-                  <p>৩. Battery Saver-এ গিয়ে <b>No restrictions (কোনো সীমাবদ্ধতা নেই)</b> নির্বাচন করুন।</p>
-                </div>
-              )}
-            </div>
+          {/* Brand Selection Tabs */}
+          <div className="grid grid-cols-4 gap-1 bg-stone-100 dark:bg-stone-900 p-1 rounded-xl text-xs font-bold text-center">
+            <button
+              type="button"
+              onClick={() => setActiveBrandTab('xiaomi')}
+              className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeBrandTab === 'xiaomi' ? 'bg-white dark:bg-[#131b17] text-[#177a56] dark:text-emerald-400 shadow-xs' : 'text-stone-500 dark:text-stone-400'}`}
+            >
+              Xiaomi
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveBrandTab('samsung')}
+              className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeBrandTab === 'samsung' ? 'bg-white dark:bg-[#131b17] text-[#177a56] dark:text-emerald-400 shadow-xs' : 'text-stone-500 dark:text-stone-400'}`}
+            >
+              Samsung
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveBrandTab('oppo')}
+              className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeBrandTab === 'oppo' ? 'bg-white dark:bg-[#131b17] text-[#177a56] dark:text-emerald-400 shadow-xs' : 'text-stone-500 dark:text-stone-400'}`}
+            >
+              Oppo/Vivo
+            </button>
+            <button
+              type="button"
+              onClick={() => setActiveBrandTab('general')}
+              className={`py-1.5 rounded-lg transition-all cursor-pointer ${activeBrandTab === 'general' ? 'bg-white dark:bg-[#131b17] text-[#177a56] dark:text-emerald-400 shadow-xs' : 'text-stone-500 dark:text-stone-400'}`}
+            >
+              অন্যান্য
+            </button>
+          </div>
 
-            {/* Samsung */}
-            <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setExpandedOem(expandedOem === 'samsung' ? null : 'samsung')}
-                className="w-full py-2 px-3 flex items-center justify-between font-bold text-[11px] text-stone-800 dark:text-stone-200 bg-stone-50 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
-              >
-                <span>📱 Samsung (One UI)</span>
-                {expandedOem === 'samsung' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              {expandedOem === 'samsung' && (
-                <div className="p-2.5 text-[11px] text-stone-600 dark:text-stone-300 bg-white dark:bg-[#131b17] space-y-1 leading-relaxed">
-                  <p>১. <b>Settings</b> &gt; <b>Apps</b> &gt; <b>Muslim Reminder</b> &gt; <b>Battery</b>-তে যান।</p>
-                  <p>২. <b>Unrestricted (সীমাহীন)</b> সিলেক্ট করুন।</p>
-                  <p>৩. Device Care &gt; Battery &gt; Background usage limits &gt; <b>Never sleeping apps</b>-এ যোগ করুন।</p>
+          {/* Tab Content */}
+          <div className="p-3 rounded-2xl bg-stone-50 dark:bg-stone-900/60 border border-stone-200 dark:border-stone-800 text-xs text-stone-700 dark:text-stone-300 space-y-1.5">
+            {activeBrandTab === 'xiaomi' && (
+              <>
+                <div className="font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-amber-500" />
+                  <span>Xiaomi / Redmi / POCO (MIUI ও HyperOS):</span>
                 </div>
-              )}
-            </div>
+                <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] leading-relaxed">
+                  <li>ফোনের <strong>Security</strong> অ্যাপ ওপেন করুন &gt; <strong>Manage Apps</strong>-এ যান।</li>
+                  <li><strong>Muslim Reminder</strong> খুঁজে বের করে <strong>Autostart (অটোস্টার্ট)</strong> চালু করুন।</li>
+                  <li>একই পেজে নিচে <strong>Battery Saver</strong>-এ গিয়ে <strong>No restrictions</strong> নির্বাচন করুন।</li>
+                  <li>রিসেন্ট অ্যাপস স্ক্রিনে Muslim Reminder চেপে ধরে <strong>Lock (লক)</strong> আইকনে চাপ দিন।</li>
+                </ol>
+              </>
+            )}
 
-            {/* Oppo / Vivo / Realme */}
-            <div className="border border-stone-200 dark:border-stone-800 rounded-xl overflow-hidden">
-              <button
-                type="button"
-                onClick={() => setExpandedOem(expandedOem === 'oppo' ? null : 'oppo')}
-                className="w-full py-2 px-3 flex items-center justify-between font-bold text-[11px] text-stone-800 dark:text-stone-200 bg-stone-50 dark:bg-stone-900/40 hover:bg-stone-100 dark:hover:bg-stone-800 cursor-pointer"
-              >
-                <span>📱 Oppo / Realme / Vivo / OnePlus</span>
-                {expandedOem === 'oppo' ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-              </button>
-              {expandedOem === 'oppo' && (
-                <div className="p-2.5 text-[11px] text-stone-600 dark:text-stone-300 bg-white dark:bg-[#131b17] space-y-1 leading-relaxed">
-                  <p>১. <b>Settings</b> &gt; <b>Battery</b> &gt; <b>App Battery Management</b> &gt; <b>Muslim Reminder</b>-এ যান।</p>
-                  <p>২. <b>Allow background activity</b> এবং <b>Allow auto-launch</b> অপশন দুটি চালু করুন।</p>
+            {activeBrandTab === 'samsung' && (
+              <>
+                <div className="font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-blue-500" />
+                  <span>Samsung Galaxy (One UI):</span>
                 </div>
-              )}
-            </div>
+                <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] leading-relaxed">
+                  <li>ফোনের <strong>Settings &gt; Apps &gt; Muslim Reminder &gt; Battery</strong>-তে যান।</li>
+                  <li><strong>Unrestricted (সীমাহীন)</strong> নির্বাচন করুন।</li>
+                  <li><strong>Settings &gt; Device Care &gt; Battery &gt; Background usage limits</strong>-এ যান।</li>
+                  <li><strong>Never sleeping apps</strong> তালিকায় Muslim Reminder যোগ করুন।</li>
+                </ol>
+              </>
+            )}
+
+            {activeBrandTab === 'oppo' && (
+              <>
+                <div className="font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-emerald-500" />
+                  <span>Oppo, Realme, Vivo ও OnePlus:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] leading-relaxed">
+                  <li><strong>Settings &gt; Battery &gt; App Battery Management &gt; Muslim Reminder</strong>-এ যান।</li>
+                  <li><strong>Allow background activity</strong> এবং <strong>Allow auto-launch</strong> অপশন দুটি অন করুন।</li>
+                  <li>Battery Optimization অপশনে <strong>Don't optimize</strong> নির্বাচন করুন।</li>
+                </ol>
+              </>
+            )}
+
+            {activeBrandTab === 'general' && (
+              <>
+                <div className="font-bold text-stone-900 dark:text-stone-100 flex items-center gap-1.5">
+                  <Smartphone className="w-3.5 h-3.5 text-stone-500" />
+                  <span>Pixel, Motorola ও স্ট্যান্ডার্ড অ্যান্ড্রয়েড:</span>
+                </div>
+                <ol className="list-decimal list-inside space-y-1 pl-1 text-[11px] leading-relaxed">
+                  <li><strong>Settings &gt; Apps &gt; Muslim Reminder</strong>-এ যান।</li>
+                  <li><strong>App battery usage</strong>-এ গিয়ে <strong>Unrestricted</strong> নির্বাচন করুন।</li>
+                  <li><strong>Alarms &amp; reminders</strong> পারমিশনটি Allow রয়েছে কি না নিশ্চিত করুন।</li>
+                </ol>
+              </>
+            )}
           </div>
         </div>
 
         {/* Action Buttons */}
-        <div className="grid grid-cols-2 gap-2.5 pt-1">
+        <div className="grid grid-cols-2 gap-2.5 pt-2">
           <button
             type="button"
             onClick={onClose}
-            className="w-full py-2.5 px-3 rounded-2xl bg-stone-100 dark:bg-stone-800/80 hover:bg-stone-200 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold text-xs sm:text-sm transition-all cursor-pointer border border-stone-200 dark:border-stone-700/60"
+            className="w-full py-2.5 px-3 rounded-2xl bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold text-xs sm:text-sm transition-all cursor-pointer border border-stone-200 dark:border-stone-700/60"
           >
             পরে করব
           </button>
 
           <button
             type="button"
-            disabled={requesting}
-            onClick={handleRequestPermissions}
-            className="w-full py-2.5 px-3 rounded-2xl bg-[#177a56] hover:bg-[#126446] text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-950/20 transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-1.5 disabled:opacity-60"
+            onClick={async () => {
+              await handleRequestPermissions();
+              onClose();
+            }}
+            className="w-full py-2.5 px-3 rounded-2xl bg-[#177a56] hover:bg-[#126446] text-white font-bold text-xs sm:text-sm shadow-md shadow-emerald-950/20 transition-all cursor-pointer active:scale-[0.98] flex items-center justify-center gap-1.5"
           >
-            {requesting ? (
-              <span>অনুমতি চাওয়া হচ্ছে...</span>
-            ) : (
-              <>
-                <Check className="w-4 h-4" />
-                <span>অনুমোদন দিন</span>
-              </>
-            )}
+            <ShieldCheck className="w-4 h-4" />
+            <span>ঠিক আছে, সম্পন্ন হয়েছে</span>
           </button>
         </div>
       </div>

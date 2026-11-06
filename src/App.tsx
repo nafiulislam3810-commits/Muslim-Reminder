@@ -50,10 +50,15 @@ import { IslamicCalendarRemindersModal } from './components/IslamicCalendarRemin
 import { AppSplashScreen } from './components/AppSplashScreen';
 import { computeCoinBreakdown } from './utils/coins';
 import { BOOTSTRAPPED_SUPER_ADMIN_EMAIL, setStoredBackendAdminToken } from './admin/adminService';
+import { Capacitor } from '@capacitor/core';
+import { App as CapApp } from '@capacitor/app';
+import { NotificationPermissionModal } from './components/NotificationPermissionModal';
 import {
   initNativeNotificationChannels,
   scheduleNativePrayerAlarms,
-  setupNativeNotificationListeners
+  setupNativeNotificationListeners,
+  checkNotificationPermissionStatus,
+  checkExactAlarmPermissionStatus
 } from './utils/nativeNotifications';
 
 export default function App() {
@@ -84,6 +89,8 @@ export default function App() {
   const [isSearchModalOpen, setIsSearchModalOpen] = useState(false);
   const [isDeenNavigatorOpen, setIsDeenNavigatorOpen] = useState(false);
   const [isCalendarRemindersOpen, setIsCalendarRemindersOpen] = useState(false);
+  const [isPermissionModalOpen, setIsPermissionModalOpen] = useState(false);
+  const [hasMissingPermissions, setHasMissingPermissions] = useState(false);
   const [shareCardContent, setShareCardContent] = useState<{
     title: string;
     arabic?: string;
@@ -91,7 +98,7 @@ export default function App() {
     reference: string;
   } | null>(null);
 
-  // Live Timer: Minute-level clock for prayer waqt boundary detection
+  // Live Timer: Coarse minute-level clock for UI prayer countdown
   const [currentTime, setCurrentTime] = useState<Date>(() => new Date());
   const lastMinuteRef = useRef<number>(new Date().getMinutes());
 
@@ -202,28 +209,67 @@ export default function App() {
     return calculateMissedPrayers(currentAmalRecord, prayers, currentTime);
   }, [currentAmalRecord, prayers, currentTime]);
 
-  // Background Prayer notification checker & coarse minute clock interval
+  // 1. Initial Permission Check on App Launch (Requirement 5)
+  useEffect(() => {
+    const checkPermissionsOnLaunch = async () => {
+      if (Capacitor.isNativePlatform()) {
+        const notifGranted = await checkNotificationPermissionStatus();
+        const exactAlarmGranted = await checkExactAlarmPermissionStatus();
+        const hasSeenPrompt = localStorage.getItem('waqto_notif_prompt_seen_v2');
+
+        if (!notifGranted || !exactAlarmGranted) {
+          setHasMissingPermissions(true);
+          // If first time opening app or permission never prompted, open modal automatically
+          if (!hasSeenPrompt) {
+            setIsPermissionModalOpen(true);
+            localStorage.setItem('waqto_notif_prompt_seen_v2', 'true');
+          }
+        } else {
+          setHasMissingPermissions(false);
+        }
+      }
+    };
+    checkPermissionsOnLaunch();
+  }, []);
+
+  // 2. Coarse clock interval for UI updates (clock & countdown timer only)
   useEffect(() => {
     const timer = setInterval(() => {
       const now = new Date();
-      
-      // Update coarse minute clock only when minute changes (saves 60x re-renders of the App tree!)
       if (now.getMinutes() !== lastMinuteRef.current) {
         lastMinuteRef.current = now.getMinutes();
         setCurrentTime(now);
       }
+    }, 1000);
 
-      // Check if next prayer is due now (within 60 seconds)
+    const handleSyncOnResume = () => {
+      if (document.visibilityState === 'visible') {
+        setCurrentTime(new Date());
+      }
+    };
+    document.addEventListener('visibilitychange', handleSyncOnResume);
+    window.addEventListener('focus', handleSyncOnResume);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleSyncOnResume);
+      window.removeEventListener('focus', handleSyncOnResume);
+    };
+  }, []);
+
+  // 3. Web-only notification fallback (strictly when running in a desktop/mobile web browser)
+  useEffect(() => {
+    if (Capacitor.isNativePlatform()) return; // Pure native Capacitor is driven 100% by AlarmManager
+
+    const webTimer = setInterval(() => {
+      const now = new Date();
       const { nextPrayer: liveNext } = getNextPrayer(prayers, now);
       if (liveNext && liveNext.remainingMinutes === 0 && liveNext.remainingSeconds < 5) {
         const prayerKey = `${todayKey}_${liveNext.nameKey}`;
         if (!alertedPrayersRef.current.has(prayerKey)) {
           alertedPrayersRef.current.add(prayerKey);
-
-          // Check if individual prayer alert is enabled
           const prayerNameKey = liveNext.nameKey as 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
           const isPrayerEnabled = settings.prayerAlerts ? settings.prayerAlerts[prayerNameKey] !== false : true;
-
           const chosenSound = settings.prayerCustomSounds?.[prayerNameKey] || settings.prayerAlertSound || 'azan_makkah';
 
           if (settings.soundEnabled && isPrayerEnabled) {
@@ -242,113 +288,42 @@ export default function App() {
           }
         }
       }
-
-      // Check 10-minute early reminder
-      if (settings.remind10MinBefore && liveNext && liveNext.remainingMinutes === 10 && liveNext.remainingSeconds < 5) {
-        const earlyKey = `${todayKey}_${liveNext.nameKey}_early10`;
-        if (!alertedPrayersRef.current.has(earlyKey)) {
-          alertedPrayersRef.current.add(earlyKey);
-          const prayerNameKey = liveNext.nameKey as 'fajr' | 'dhuhr' | 'asr' | 'maghrib' | 'isha';
-          const isPrayerEnabled = settings.prayerAlerts ? settings.prayerAlerts[prayerNameKey] !== false : true;
-
-          if (isPrayerEnabled) {
-            soundManager.playSoftBeep();
-            if (settings.vibrateEnabled) triggerHaptic(40);
-            sendNotification(
-              `আগাম সতর্কতা — ${liveNext.nameBn} আর ১০ মিনিট বাকি`,
-              `${district.nameBn}-এ আর ১০ মিনিট পর ${liveNext.nameBn} ওয়াক্ত শুরু হবে। নামাজের প্রস্তুতি নিন।`
-            );
-          }
-        }
-      }
-
-      // Check Hijri-based Sunnah Fasting Push Notifications
-      if (settings.sunnahFastingNotificationsEnabled) {
-        const sunnahToggles = {
-          ...DEFAULT_SUNNAH_FASTING_TOGGLES,
-          ...(settings.sunnahFastingAlerts || {})
-        };
-        const timingPref = settings.sunnahFastingReminderTiming || 'both';
-        const hijriAdj = settings.hijriDayAdjustment || 0;
-
-        // 1. Evening Before Reminder (8:00 PM for tomorrow's Sunnah Fast)
-        if ((timingPref === 'evening_before' || timingPref === 'both') && now.getHours() === 20 && now.getMinutes() === 0 && now.getSeconds() < 5) {
-          const eveningFastKey = `${todayKey}_sunnah_fast_evening`;
-          if (!alertedPrayersRef.current.has(eveningFastKey)) {
-            const tomorrow = new Date(now.getTime() + 24 * 60 * 60 * 1000);
-            const tomorrowFast = evaluateSunnahFastingDay(tomorrow, hijriAdj, sunnahToggles, 1);
-            if (tomorrowFast) {
-              alertedPrayersRef.current.add(eveningFastKey);
-              if (settings.soundEnabled) soundManager.playPrayerChime();
-              if (settings.vibrateEnabled) triggerHaptic([80, 40, 80]);
-              if (tomorrowFast.matchedKeys.includes('ayyamAlBeed') && tomorrowFast.hijriDay === 13) {
-                const ayyamWin = getUpcomingAyyamAlBeedWindow(now, hijriAdj);
-                sendNotification('আইয়ামে বীজের রোজা', ayyamWin.messageBn);
-              } else {
-                sendNotification(
-                  `আগামীকাল সুন্নাহ রোজা — ${tomorrowFast.primaryTitleBn}`,
-                  `আগামীকাল (${tomorrowFast.hijriDateBn}) ${tomorrowFast.primaryTitleBn}। সেহরির শেষ সময় (ফজর): ${toBengaliDigits(prayers.fajr)}। ${tomorrowFast.virtueBn}`
-                );
-              }
-            }
-          }
-        }
-
-        // 2. Sehri Morning Reminder (45 minutes before Fajr on the day of Sunnah Fast)
-        if (
-          (timingPref === 'sehri_morning' || timingPref === 'both') &&
-          liveNext &&
-          liveNext.nameKey === 'fajr' &&
-          liveNext.remainingMinutes === 45 &&
-          liveNext.remainingSeconds < 5
-        ) {
-          const sehriFastKey = `${todayKey}_sunnah_fast_sehri`;
-          if (!alertedPrayersRef.current.has(sehriFastKey)) {
-            const todayFast = evaluateSunnahFastingDay(now, hijriAdj, sunnahToggles, 0);
-            if (todayFast) {
-              alertedPrayersRef.current.add(sehriFastKey);
-              if (settings.soundEnabled) soundManager.playPrayerChime();
-              if (settings.vibrateEnabled) triggerHaptic([100, 50, 100]);
-              sendNotification(
-                `সেহরির সময় চলছে — আজ ${todayFast.primaryTitleBn}`,
-                `আজ (${todayFast.hijriDateBn}) ${todayFast.primaryTitleBn}। সেহরির শেষ সময় (ফজর): ${toBengaliDigits(prayers.fajr)}। নিয়ত করে সেহরি সম্পন্ন করুন।`
-              );
-            }
-          }
-        }
-      }
     }, 1000);
 
-    const handleSyncOnResume = () => {
-      if (document.visibilityState === 'visible') {
-        setCurrentTime(new Date());
-      }
-    };
-    document.addEventListener('visibilitychange', handleSyncOnResume);
-    window.addEventListener('focus', handleSyncOnResume);
+    return () => clearInterval(webTimer);
+  }, [prayers, todayKey, district.nameBn, settings]);
 
-    return () => {
-      clearInterval(timer);
-      document.removeEventListener('visibilitychange', handleSyncOnResume);
-      window.removeEventListener('focus', handleSyncOnResume);
-    };
-  }, [prayers, todayKey, district.nameBn, settings, activeTab]);
-
-  // Setup Native Android notification channels & listen for background alarm taps
+  // 4. Setup Native Android notification channels & listen for background alarm taps
   useEffect(() => {
     initNativeNotificationChannels();
     const unsub = setupNativeNotificationListeners(() => {
       navigateTo('prayers');
     });
+
+    let appStateHandle: { remove: () => void } | null = null;
+    if (Capacitor.isNativePlatform()) {
+      CapApp.addListener('appStateChange', (state) => {
+        if (state.isActive) {
+          setCurrentTime(new Date());
+          // Reschedule all upcoming 7 days when user returns to app
+          scheduleNativePrayerAlarms(district, settings, prayerSystemConfig);
+        }
+      }).then((h) => {
+        appStateHandle = h;
+      });
+    }
+
     return () => {
       unsub();
+      if (appStateHandle) appStateHandle.remove();
     };
-  }, []);
+  }, [district, settings, prayerSystemConfig]);
 
-  // Schedule native background Android alarms for all 5 daily prayers (7 days in advance)
+  // 5. Schedule native background Android alarms for all 5 daily prayers (7 days in advance)
+  // Re-runs whenever district, settings, prayerSystemConfig, or todayKey changes
   useEffect(() => {
     scheduleNativePrayerAlarms(district, settings, prayerSystemConfig);
-  }, [district, settings, prayerSystemConfig]);
+  }, [district, settings, prayerSystemConfig, todayKey]);
 
   // Theme application
   useEffect(() => {
@@ -862,6 +837,24 @@ export default function App() {
       {/* Fixed Header Height Offset Spacer */}
       <div className="h-14 pt-[env(safe-area-inset-top,0px)] shrink-0 select-none pointer-events-none" aria-hidden="true" />
 
+      {/* Android Native Permission Notice Banner if permissions are missing */}
+      {hasMissingPermissions && (
+        <div className="max-w-xl mx-auto px-3 sm:px-4 pt-2">
+          <div 
+            onClick={() => setIsPermissionModalOpen(true)}
+            className="p-2.5 rounded-2xl bg-amber-500/15 border border-amber-500/40 text-amber-900 dark:text-amber-200 flex items-center justify-between gap-2.5 text-xs font-bold cursor-pointer hover:bg-amber-500/25 transition-all shadow-xs"
+          >
+            <div className="flex items-center gap-2 min-w-0">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping shrink-0" />
+              <span className="truncate">স্ক্রিন অফে আজান পেতে নোটিফিকেশন ও অ্যালার্ম পারমিশন দিন</span>
+            </div>
+            <span className="px-2.5 py-1 rounded-xl bg-amber-600 text-white text-[11px] font-bold shrink-0 shadow-xs">
+              অনুমতি দিন
+            </span>
+          </div>
+        </div>
+      )}
+
       {/* 2. Main Content Area */}
       <main className="flex-1 w-full pb-[calc(4.5rem+env(safe-area-inset-bottom,0px))]">
         {/* TAB 1: HOME */}
@@ -1344,6 +1337,19 @@ export default function App() {
         onClose={handleCloseCalendarReminders}
         settings={settings}
         onUpdateSettings={handleUpdateSettings}
+      />
+
+      <NotificationPermissionModal
+        isOpen={isPermissionModalOpen}
+        onClose={() => setIsPermissionModalOpen(false)}
+        onPermissionsUpdated={() => {
+          scheduleNativePrayerAlarms(district, settings, prayerSystemConfig);
+          checkNotificationPermissionStatus().then((n) => {
+            checkExactAlarmPermissionStatus().then((e) => {
+              setHasMissingPermissions(!n || !e);
+            });
+          });
+        }}
       />
 
       {/* App Open Startup Animation Screen (Zoom Entrance & Seamless Fade into Dashboard) */}

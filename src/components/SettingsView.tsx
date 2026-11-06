@@ -55,7 +55,8 @@ import {
   checkNotificationPermissionStatus,
   requestAllNotificationPermissions,
   sendTestPrayerNotification,
-  requestExactAlarmSetting
+  requestExactAlarmSetting,
+  schedule10SecondTestAdhan
 } from '../utils/nativeNotifications';
 import { toBengaliDigits, getHijriDate } from '../utils/prayerTimes';
 import { 
@@ -145,6 +146,38 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
       setNotificationPermission('denied');
       onUpdateSettings({ notificationsEnabled: false });
     }
+  };
+
+  const [testCountdown10s, setTestCountdown10s] = useState<number | null>(null);
+  const [testStatusMsg10s, setTestStatusMsg10s] = useState<string | null>(null);
+
+  // Requirement 8: Schedule 10-Second Test Adhan to verify playback when screen is locked
+  const handleRun10SecTest = async () => {
+    triggerHaptic(40);
+    setTestStatusMsg10s('১০ সেকেন্ডের টেস্ট আজান শিডিউল হচ্ছে...');
+    const res = await schedule10SecondTestAdhan();
+    if (!res.success) {
+      setTestStatusMsg10s(res.error || 'টেস্ট শিডিউল করতে সমস্যা হয়েছে।');
+      return;
+    }
+
+    setTestStatusMsg10s('১০ সেকেন্ড পর আজান বাজবে! এখনই ফোন লক বা স্ক্রিন অফ করে পরীক্ষা করুন...');
+    setTestCountdown10s(10);
+
+    const interval = setInterval(() => {
+      setTestCountdown10s((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          setTestStatusMsg10s('আজান বাজছে / সম্পন্ন হয়েছে!');
+          setTimeout(() => {
+            setTestCountdown10s(null);
+            setTestStatusMsg10s(null);
+          }, 6000);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   // Send an immediate test notification with Azan to verify phone status bar & audio
@@ -505,28 +538,47 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
             )}
           </div>
 
-          {/* Test Notification Button */}
-          <div className="pt-2 border-t border-stone-200/60 dark:border-stone-700/60">
+          {/* Dual Test Notification Buttons: 10s Screen-Off Test & Immediate Test */}
+          <div className="pt-2 border-t border-stone-200/60 dark:border-stone-700/60 space-y-2">
+            {/* 1. Requirement 8: 10-Second Test Adhan with Live Countdown */}
+            <button
+              onClick={handleRun10SecTest}
+              disabled={testCountdown10s !== null}
+              className="w-full py-2.5 px-3 rounded-xl bg-[#177a56] hover:bg-[#126446] text-white text-xs sm:text-sm font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-75"
+            >
+              <BellRing className={`w-4 h-4 ${testCountdown10s !== null ? 'animate-bounce' : ''}`} />
+              {testCountdown10s !== null 
+                ? `টেস্ট আজান শিডিউল হয়েছে (${testCountdown10s}s বাকি) — এখন স্ক্রিন লক করুন!` 
+                : '১০ সেকেন্ড পর টেস্ট আজান পরীক্ষা করুন (স্ক্রিন অফ টেস্ট)'}
+            </button>
+
+            {testStatusMsg10s && (
+              <div className="text-[11px] p-2.5 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 border border-emerald-300 dark:border-emerald-800 text-emerald-900 dark:text-emerald-200 font-semibold text-center animate-in fade-in">
+                {testStatusMsg10s}
+              </div>
+            )}
+
+            {/* 2. Immediate Test Alert */}
             <button
               onClick={handleSendTestNotification}
               disabled={testNotificationSent}
-              className="w-full py-2.5 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-xs sm:text-sm font-bold flex items-center justify-center gap-2 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 transition-colors cursor-pointer shadow-xs disabled:opacity-60"
+              className="w-full py-2 px-3 rounded-xl bg-stone-100 dark:bg-stone-800/80 hover:bg-stone-200 dark:hover:bg-stone-800 text-stone-700 dark:text-stone-300 text-xs font-semibold flex items-center justify-center gap-2 transition-colors cursor-pointer border border-stone-200/70 dark:border-stone-700/60 disabled:opacity-60"
             >
-              <BellRing className={`w-4 h-4 text-emerald-600 dark:text-emerald-400 ${testNotificationSent ? 'animate-bounce' : ''}`} />
-              {testNotificationSent ? 'নোটিফিকেশন পাঠানো হয়েছে — স্ট্যাটাস বার চেক করুন!' : 'ফোনে এখনই টেস্ট আজান ও নোটিফিকেশন পাঠান'}
+              <Volume2 className="w-3.5 h-3.5 text-stone-500" />
+              {testNotificationSent ? 'নোটিফিকেশন পাঠানো হয়েছে — স্ট্যাটাস বার চেক করুন!' : 'তাৎক্ষণিক প্রিভিউ নোটিফিকেশন পাঠান'}
             </button>
           </div>
 
-          {/* Android Battery & Exact Alarm Guidance */}
-          <div className="p-3.5 rounded-xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs sm:text-sm">
+          {/* Android Battery & Exact Alarm Guidance (Xiaomi / Samsung / Oppo) */}
+          <div className="p-3.5 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-start gap-2.5 text-xs sm:text-sm">
             <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
             <div className="space-y-2 flex-1">
               <div>
                 <span className="font-bold text-amber-900 dark:text-amber-200 block">
-                  অ্যান্ড্রয়েড ব্যাকগ্রাউন্ডে আজান নিশ্চিত করার নির্দেশিকা
+                  স্ক্রিন অফ ও ফোন রিস্টার্টের পর আজান নিশ্চিত করার নিয়ম
                 </span>
-                <p className="text-amber-800 dark:text-amber-300 leading-relaxed font-medium mt-0.5">
-                  ফোন লক থাকলে বা অ্যাপ বন্ধ থাকলেও সঠিক সময়ে আজান বাজার জন্য ফোনের <b>Settings &gt; Apps &gt; Muslim Reminder &gt; Battery</b>-তে গিয়ে <b>Unrestricted (সীমাহীন)</b> অপশন নির্বাচন করুন এবং <b>Alarms &amp; Reminders</b> পারমিশনটি অন রাখুন।
+                <p className="text-amber-800 dark:text-amber-300 leading-relaxed font-medium mt-0.5 text-xs">
+                  অ্যাপ বন্ধ থাকলেও বা ফোন রিস্টার্ট হলেও ৭ দিনের আজান অ্যালার্ম সক্রিয় থাকে। তবে Xiaomi, Samsung, Oppo ফোনের ব্যাটারি সেভার যাতে আজান না থামায়, সেজন্য <b>Unrestricted (সীমাহীন)</b> ও <b>Autostart</b> অন রাখা আবশ্যক।
                 </p>
               </div>
 
@@ -539,7 +591,7 @@ export const SettingsView: React.FC<SettingsViewProps> = ({
                 className="py-2 px-3 rounded-xl bg-amber-600 hover:bg-amber-700 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-xs active:scale-[0.98]"
               >
                 <ShieldAlert className="w-3.5 h-3.5" />
-                <span>সঠিক অ্যালার্ম ও ব্যাটারি অপটিমাইজেশন নীতি বিস্তারিত জানুন</span>
+                <span>Xiaomi / Samsung / Oppo ব্যাটারি সেটিং ও পারমিশন দেখুন</span>
               </button>
             </div>
           </div>

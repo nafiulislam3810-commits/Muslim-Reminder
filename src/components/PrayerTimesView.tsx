@@ -10,11 +10,14 @@ import {
   Moon, 
   Sparkles,
   Square,
-  Play
+  Play,
+  BellRing,
+  RefreshCw
 } from 'lucide-react';
 import { PrayerTimes, NextPrayerInfo, District, UserSettings } from '../types';
 import { computePrayerTimes, toBengaliDigits } from '../utils/prayerTimes';
 import { soundManager, triggerHaptic, PRAYER_ALERT_SOUND_OPTIONS } from '../utils/audio';
+import { schedule10SecondTestAdhan } from '../utils/nativeNotifications';
 
 interface PrayerTimesViewProps {
   district: District;
@@ -90,6 +93,37 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = React.memo(({
       });
       setIsPlayingTest(true);
     }
+  };
+
+  const [testCountdown, setTestCountdown] = useState<number | null>(null);
+  const [testMsg, setTestMsg] = useState<string | null>(null);
+
+  const handleSchedule10sTest = async () => {
+    triggerHaptic(40);
+    setTestMsg('১০ সেকেন্ডের টেস্ট শিডিউল হচ্ছে...');
+    const res = await schedule10SecondTestAdhan();
+    if (!res.success) {
+      setTestMsg(res.error || 'শিডিউল করা যায়নি।');
+      return;
+    }
+
+    setTestMsg('১০ সেকেন্ড পর আজান আসবে! এখন ফোন লক বা স্ক্রিন অফ করে পরীক্ষা করুন...');
+    setTestCountdown(10);
+
+    const interval = setInterval(() => {
+      setTestCountdown((prev) => {
+        if (prev === null || prev <= 1) {
+          clearInterval(interval);
+          setTestMsg('আজান সম্পন্ন হয়েছে!');
+          setTimeout(() => {
+            setTestCountdown(null);
+            setTestMsg(null);
+          }, 5000);
+          return null;
+        }
+        return prev - 1;
+      });
+    }, 1000);
   };
 
   return (
@@ -279,6 +313,27 @@ export const PrayerTimesView: React.FC<PrayerTimesViewProps> = React.memo(({
         <p className="text-xs text-stone-600 dark:text-stone-400">
           নির্বাচিত মোয়াজ্জিন: <strong>{PRAYER_ALERT_SOUND_OPTIONS.find(o => o.id === (settings.prayerAlertSound || 'azan_makkah'))?.nameBn || 'মক্কা মুকাররমার আজান'}</strong>
         </p>
+
+        {/* 10-Second Test Adhan Button (Requirement 8) */}
+        <div className="pt-2 border-t border-stone-200/60 dark:border-stone-800 space-y-1.5">
+          <button
+            type="button"
+            disabled={testCountdown !== null}
+            onClick={handleSchedule10sTest}
+            className="w-full py-2 px-3 rounded-xl bg-emerald-50 dark:bg-emerald-950/40 hover:bg-emerald-100 dark:hover:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-800/60 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xs disabled:opacity-60"
+          >
+            <BellRing className={`w-3.5 h-3.5 ${testCountdown !== null ? 'animate-bounce' : ''}`} />
+            {testCountdown !== null 
+              ? `১০ সেকেন্ডের টেস্ট চলছে (${testCountdown}s বাকি) — এখন স্ক্রিন লক করুন!` 
+              : '১০ সেকেন্ড পর টেস্ট আজান পরীক্ষা করুন (স্ক্রিন অফ টেস্ট)'}
+          </button>
+
+          {testMsg && (
+            <p className="text-[11px] text-center font-semibold text-emerald-700 dark:text-emerald-300 animate-in fade-in">
+              {testMsg}
+            </p>
+          )}
+        </div>
       </div>
 
       {/* 5. Juristic Method & Calculation Controls */}
