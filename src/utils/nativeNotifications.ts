@@ -13,8 +13,8 @@ import { soundManager, triggerHaptic, sendNotification as sendWebNotification } 
 export const PRAYER_CHANNELS: Channel[] = [
   {
     id: 'adhan',
-    name: 'ওয়াক্ত ও আজান',
-    description: 'নামাজের ওয়াক্ত হলে আজানের পূর্ণাঙ্গ ধ্বনি ও নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান',
+    description: 'নামাজের ওয়াক্ত হলে আজানের পূর্ণাঙ্গ ধ্বনি ও নোটিফিকেশন',
     sound: 'adhan',
     importance: 5, // IMPORTANCE_HIGH
     visibility: 1, // NotificationVisibility.PUBLIC
@@ -35,8 +35,8 @@ export const PRAYER_CHANNELS: Channel[] = [
   // Channels for specific selectable Muazzin sounds (all sound names without .mp3)
   {
     id: 'prayer_azan_makkah',
-    name: 'ওয়াক্ত ও আজান (মক্কা শরিফ)',
-    description: 'মসজিদুল হারামের আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান (মক্কা শরিফ)',
+    description: 'মসজিদুল হারামের আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
     sound: 'azan_makkah',
     importance: 5,
     visibility: 1,
@@ -46,8 +46,8 @@ export const PRAYER_CHANNELS: Channel[] = [
   },
   {
     id: 'prayer_azan_madinah',
-    name: 'ওয়াক্ত ও আজান (মদিনা শরিফ)',
-    description: 'মসজিদুন নববির আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান (মদিনা শরিফ)',
+    description: 'মসজিদুন নববির আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
     sound: 'azan_madinah',
     importance: 5,
     visibility: 1,
@@ -57,8 +57,8 @@ export const PRAYER_CHANNELS: Channel[] = [
   },
   {
     id: 'prayer_azan_mishary',
-    name: 'ওয়াক্ত ও আজান (মিশারি রাশিদ)',
-    description: 'মিশারি রাশিদ আল-আফাসির আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান (মিশারি রাশিদ)',
+    description: 'মিশারি রাশিদ আল-আফাসির আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
     sound: 'azan_mishary',
     importance: 5,
     visibility: 1,
@@ -68,8 +68,8 @@ export const PRAYER_CHANNELS: Channel[] = [
   },
   {
     id: 'prayer_azan_aqsa',
-    name: 'ওয়াক্ত ও আজান (আল-আকসা)',
-    description: 'মসজিদুল আকসার আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান (আল-আকসা)',
+    description: 'মসজিদুল আকসার আজান ও নামাজের ওয়াক্ত নোটিফিকেশন',
     sound: 'azan_aqsa',
     importance: 5,
     visibility: 1,
@@ -79,8 +79,8 @@ export const PRAYER_CHANNELS: Channel[] = [
   },
   {
     id: 'prayer_azan_fajr',
-    name: 'ওয়াক্ত ও আজান (ফজর বিশেষ)',
-    description: 'ফজরের বিশেষ পূর্ণাঙ্গ আজান ও ওয়াক্ত নোটিফিকেশন',
+    name: 'ওয়াক্ত ও আজান (ফজর বিশেষ)',
+    description: 'ফজরের বিশেষ পূর্ণাঙ্গ আজান ও ওয়াক্ত নোটিফিকেশন',
     sound: 'azan_fajr',
     importance: 5,
     visibility: 1,
@@ -312,10 +312,10 @@ export async function scheduleNativePrayerAlarms(
 
           notificationsToSchedule.push({
             id: notificationId,
-            title: `ওয়াক্ত হয়েছে — ${p.bnName} (${toBengaliDigits(timeStr)})`,
-            body: `${district.nameBn}-এ এখন ${p.bnName} নামাজের সময় হয়েছে। আজান শুরু হচ্ছে। “হাইয়া আলাস-সালাহ — নামাজের দিকে এসো।”`,
-            largeBody: `${district.nameBn}-এ এখন ${p.bnName} ওয়াক্ত শুরু হয়েছে। নামাজের প্রস্তুতি নিয়ে সময়মত জামাতে সালাত আদায় করুন।`,
-            summaryText: 'নামাজের ওয়াক্ত ও আজান',
+            title: `ওয়াক্ত হয়েছে — ${p.bnName} (${toBengaliDigits(timeStr)})`,
+            body: `${district.nameBn}-এ এখন ${p.bnName} নামাজের সময় হয়েছে। আজান শুরু হচ্ছে। “হাইয়া আলাস-সালাহ — নামাজের দিকে এসো।”`,
+            largeBody: `${district.nameBn}-এ এখন ${p.bnName} ওয়াক্ত শুরু হয়েছে। নামাজের প্রস্তুতি নিয়ে সময়মত জামাতে সালাত আদায় করুন।`,
+            summaryText: 'নামাজের ওয়াক্ত ও আজান',
             schedule: {
               at: prayerDate,
               allowWhileIdle: true // CRITICAL: Wakes device and fires even in Android Doze mode
@@ -343,7 +343,7 @@ export async function scheduleNativePrayerAlarms(
             notificationsToSchedule.push({
               id: earlyNotificationId,
               title: `আগাম সতর্কতা — ${p.bnName} আর ১০ মিনিট বাকি`,
-              body: `${district.nameBn}-এ আর ১০ মিনিট পর ${p.bnName} ওয়াক্ত শুরু হবে (${toBengaliDigits(timeStr)})। নামাজের প্রস্তুতি নিন।`,
+              body: `${district.nameBn}-এ আর ১০ মিনিট পর ${p.bnName} ওয়াক্ত শুরু হবে (${toBengaliDigits(timeStr)})। নামাজের প্রস্তুতি নিন।`,
               schedule: {
                 at: earlyDate,
                 allowWhileIdle: true
@@ -396,7 +396,7 @@ export async function schedule10SecondTestAdhan(): Promise<{
           success: false,
           scheduledTime: testTime,
           isNative: true,
-          error: 'নোটিফিকেশন অনুমতি প্রদান করা হয়নি।'
+          error: 'নোটিফিকেশন অনুমতি প্রদান করা হয়নি।'
         };
       }
 
@@ -410,7 +410,7 @@ export async function schedule10SecondTestAdhan(): Promise<{
           {
             id: testId,
             title: 'টেস্ট আজান — মুসলিম রিমাইন্ডার',
-            body: 'আলহামদুলিল্লাহ! ১০ সেকেন্ড পরের টেস্ট আজান সফলভাবে সম্পন্ন হয়েছে। ওয়াক্ত অনুযায়ী ব্যাকগ্রাউন্ডে আজান বাজবে।',
+            body: 'আলহামদুলিল্লাহ! ১০ সেকেন্ড পরের টেস্ট আজান সফলভাবে সম্পন্ন হয়েছে। ওয়াক্ত অনুযায়ী ব্যাকগ্রাউন্ডে আজান বাজবে।',
             schedule: {
               at: testTime,
               allowWhileIdle: true // Wakes device and fires even when screen is locked
@@ -438,7 +438,7 @@ export async function schedule10SecondTestAdhan(): Promise<{
         success: false,
         scheduledTime: testTime,
         isNative: true,
-        error: err?.message || 'টেস্ট শিডিউল করতে সমস্যা হয়েছে।'
+        error: err?.message || 'টেস্ট শিডিউল করতে সমস্যা হয়েছে।'
       };
     }
   }
@@ -448,7 +448,7 @@ export async function schedule10SecondTestAdhan(): Promise<{
     soundManager.playPrayerAlert('azan_makkah');
     sendWebNotification(
       'টেস্ট আজান — মুসলিম রিমাইন্ডার',
-      'ওয়েব ব্রাউজারে ১০ সেকেন্ড পরের টেস্ট আজান সফল হয়েছে। অ্যান্ড্রয়েড অ্যাপে এটি সরাসরি অ্যালার্ম ম্যানেজারে বাজবে।'
+      'ওয়েব ব্রাউজারে ১০ সেকেন্ড পরের টেস্ট আজান সফল হয়েছে। অ্যান্ড্রয়েড অ্যাপে এটি সরাসরি অ্যালার্ম ম্যানেজারে বাজবে।'
     );
   }, 10000);
 
@@ -457,6 +457,85 @@ export async function schedule10SecondTestAdhan(): Promise<{
     scheduledTime: testTime,
     isNative: false
   };
+}
+
+/**
+ * Send an immediate test prayer notification (used by SettingsView).
+ * Fires right now with the selected Muazzin sound, so the user can verify
+ * notification + sound without waiting.
+ */
+export async function sendTestPrayerNotification(
+  soundId?: PrayerAlertSound
+): Promise<{ success: boolean; isNative: boolean; error?: string }> {
+  triggerHaptic([100, 50, 100]);
+
+  const title = 'টেস্ট নোটিফিকেশন — মুসলিম রিমাইন্ডার';
+  const body = 'আলহামদুলিল্লাহ! নোটিফিকেশন সফলভাবে কাজ করছে। ওয়াক্ত হলে এভাবেই আজানসহ নোটিফিকেশন আসবে।';
+
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await initNativeNotificationChannels();
+      const perms = await requestAllNotificationPermissions();
+      if (!perms.notificationsGranted) {
+        return {
+          success: false,
+          isNative: true,
+          error: 'নোটিফিকেশন অনুমতি প্রদান করা হয়নি।'
+        };
+      }
+
+      const { channelId, sound } = resolveChannelAndSound(soundId || 'azan_makkah');
+      const notifId = 99991;
+
+      await LocalNotifications.cancel({
+        notifications: [{ id: notifId }]
+      }).catch(() => {});
+
+      await LocalNotifications.schedule({
+        notifications: [
+          {
+            id: notifId,
+            title,
+            body,
+            schedule: {
+              at: new Date(Date.now() + 1000),
+              allowWhileIdle: true
+            },
+            channelId,
+            sound,
+            smallIcon: 'ic_launcher_round',
+            iconColor: '#064e3b',
+            extra: {
+              type: 'test_prayer_notification',
+              sound
+            }
+          }
+        ]
+      });
+
+      return { success: true, isNative: true };
+    } catch (err: any) {
+      console.warn('sendTestPrayerNotification error:', err);
+      return {
+        success: false,
+        isNative: true,
+        error: err?.message || 'টেস্ট নোটিফিকেশন পাঠাতে সমস্যা হয়েছে।'
+      };
+    }
+  }
+
+  // Web browser fallback
+  try {
+    soundManager.playPrayerAlert(soundId || 'azan_makkah');
+    sendWebNotification(title, body);
+    return { success: true, isNative: false };
+  } catch (err: any) {
+    return {
+      success: false,
+      isNative: false,
+      error: err?.message || 'টেস্ট নোটিফিকেশন পাঠাতে সমস্যা হয়েছে।'
+    };
+  }
 }
 
 /**
